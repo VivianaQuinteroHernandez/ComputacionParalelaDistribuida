@@ -51,44 +51,6 @@ float randMM(){
 }
 
 
-/* Funcion a ser enviada a cada hilo, que realiza la multiplicación de matrices. La Matriz A,
- * se divide por porciones, en función de la dimensión y del número de hilos que requiere el usuario.
- * Nota la función setrá del tipo voidla cual retomará
- un warning potencial de riesgo. Pensar en eso, para mejorarla*/
-
-void *multMM(void *arg){
-	//los datos importados de MMposix
-	struct dataThread *data = (struct dataThread *)arg;
-	int idTh = data->idThread;
-	double **Ma = data->Ma;
-	double **Mb = data->Mb;
-	double **Mr = data->Mr;
-	int N = data->N;
-	int Nthreads = data->NThreads;
-	//arg: tiene el ID del hilo
-	int i,j,k;
-	int porcionSize, iniFila, finFila;
-	double suma;
-	
-	// El arg es del tipo puntero vacío y se castea a puntero entero
-	idTh = *(int *)(arg);
-	// Se determina la porción a ser enviada a cada holi
-	porcionSize = N/Nthreads;
-	//Se pasa el inicio de la fila, según el id del hilo
-	iniFila = idTh*porcionSize;
-	//Se pasa el fin de la fila, según el id del hilo
-	finFila = (idTh+1)*porcionSize;
-	
-	for(i = iniFila; i < finFila; ++i){
-		for(j = 0; j < N; ++j){
-			suma = 0.0;
-			for(k=0; k < N; ++k){
-				suma += Ma[i][k] * Mb[k][j];
-			}
-			Mc[i][j] = suma;
-		}
-	}
-}
 
 
 
@@ -97,8 +59,8 @@ void initMatrix(int SZ, double *Ma, double *Mb, double *Mr){
 	int i, j;
 	for(i=0; i<SZ; ++i){
 		for(j=0; j<SZ; ++j){
-			Ma[j+i*SZ]= 3.9*(i-j);
-			Mb[j+i*SZ]= 2.0*(j+i);
+			Ma[j+i*SZ]= 3.2*(i+j);
+			Mb[j+i*SZ]= 2.4*(j-i);
 			Mr[j+i*SZ]= 0.0;
 		}
 	}
@@ -107,16 +69,18 @@ void initMatrix(int SZ, double *Ma, double *Mb, double *Mr){
 /* Se implementa la impresión para efectos de validación*/
 void printMatrix(int SZ, double *M){
 	int i, j;
-	for(i=0; i<SZ; ++i){
-		for(j=0; j<SZ; ++j){
-			printf("%f   ",M[j+i*SZ]);
-			
+	if(SZ<5){
+		for(i=0; i<SZ; ++i){
+			for(j=0; j<SZ; ++j){
+				printf("%f   ",M[j+i*SZ]);
+				
+			}
+			printf("\n");
 		}
-		printf("\n");
 	}
 }
 
-void matrixMM1c(int size, double *a, double *b, double *Mr){
+void MM1c(int size, double *a, double *b, double *Mr){
 	int i, j, k;
 	for(i=0; i<size; ++i){
 		for(j=0; j<size; ++j){
@@ -132,8 +96,36 @@ void matrixMM1c(int size, double *a, double *b, double *Mr){
 		}	
 	}
 }
+/**
+ * @brief Function that makes the matrix multiplication between two matrixes and the result is saved in another matrix. This uses Open MP
+ */
+void MM1cOMP(int threads, int size, double *a, double *b, double *c)
+{
+	omp_set_num_threads(threads);
+#pragma omp parallel
+	{
+		int i, j, k;
+#pragma omp for
+		for (i = 0; i < size; ++i)
+		{
+			for (j = 0; j < size; ++j)
+			{
+				/*Necesita puteros auxiliares*/
+				double *pA, *pB;
+				double auxiliarSum = 0.0;
+				pA = a + (i * size);
+				pB = b + j;
+				for (k = 0; k < size; ++k, pA++, pB += size)
+				{
+					auxiliarSum += (*pA * *pB);
+				}
+				c[i * size + j] = auxiliarSum;
+			}
+		}
+	}
+}
 
-void matrixMM1f(int size, double *a, double *b, double *Mr){
+void MM1f(int size, double *a, double *b, double *Mr){
 	int i, j, k;
 	for(i=0; i<size; ++i){
 		for(j=0; j<size; ++j){
@@ -148,6 +140,72 @@ void matrixMM1f(int size, double *a, double *b, double *Mr){
 			Mr[i*size+j]= sumaAuxiliar;
 		}	
 	}
+}
+
+/**
+ * @brief Function that makes the matrix multiplication between two matrixes and the result is saved in another matrix. This uses Open MP
+ */
+void MM1fOMP(int threads, int size, double *a, double *b, double *c)
+{
+	omp_set_num_threads(threads);
+#pragma omp parallel
+	{
+		int i, j, k;
+#pragma omp for
+		
+		for (i = 0; i < size; ++i)
+		{
+			for (j = 0; j < size; ++j)
+			{
+				/*Necesita puteros auxiliares*/
+				double *pA, *pB;
+				double sumaAuxiliar = 0.0;
+				pA = a + (i * size);
+				pB = b + (j * size);
+				for (k = 0; k < size; ++k, pA++, pB++)
+				{
+					sumaAuxiliar += (*pA * *pB);
+				}
+				c[i * size + j] = sumaAuxiliar;
+			}
+		}
+	}
+}
+
+
+/* Funcion a ser enviada a cada hilo, que realiza la multiplicación de matrices. La Matriz A,
+ * se divide por porciones, en función de la dimensión y del número de hilos que requiere el usuario.
+ * Nota la función setrá del tipo voidla cual retomará
+ un warning potencial de riesgo. Pensar en eso, para mejorarla*/
+void *multMM(void *argThreads){
+	//arg: tiene el ID del hilo
+	int i,j,k;
+	int porcionSize, iniFila, finFila;
+	double suma;
+	int idTH = ((structHilos*)argThreads) -> idThread;
+	int sizeTH = ((structHilos*)argThreads) -> size;
+	int nThreadTH = ((structHilos*)argThreads) -> nThread;
+	double **MA = ((structHilos*) argThreads) -> a;
+	double **MB = ((structHilos*) argThreads) -> b;
+	double **MC = ((structHilos*) argThreads) -> c;
+
+	// Se determina la porción a ser enviada a cada hilo
+	porcionSize = sizeTH/nThreadTH;
+	//Se pasa el inicio de la fila, según el id del hilo
+	iniFila = idTH*porcionSize;
+	//Se pasa el fin de la fila, según el id del hilo
+	finFila = (idTH+1)*porcionSize;
+	
+	for(i = iniFila; i < finFila; ++i){
+		for(j = 0; j < sizeTH; ++j){
+			suma = 0.0;
+			for(k=0; k < sizeTH; ++k){
+				suma += MA[i][k] * MB[k][j];
+			}
+			MC[i][j] = suma;
+		}
+	}
+	pthread_exit(NULL);
 }
 
 
@@ -173,8 +231,8 @@ void IniciarMatriz(double **matA, double **matB, double **matC, int size){
 	for(i=0; i<size; ++i){
 		for(j=0; j<size; ++j){
 			
-			matA[i][j] = 3.9 * (i-j);
-			matB[i][j] = 2.0 * (j+i);
+			matA[i][j] = 3.2 * (i+j);
+			matB[i][j] = 2.4 * (j-i);
 			matC[i][j] = 0.0;
 		}
 	}
@@ -182,16 +240,17 @@ void IniciarMatriz(double **matA, double **matB, double **matC, int size){
 
 //* 6- Se necesita función para impresión de las matrices (doble puntero)
 void printMatriz(double **matriz, int size){
-	int i, j;
-	for(i=0; i<size; ++i){
-		for(j=0; j<size; ++j){
-			printf("%lf",matriz[i][j]);
+	if(size < 5){
+		int i, j;
+		for(i=0; i<size; ++i){
+			for(j=0; j<size; ++j){
+				printf(" %f ",matriz[i][j]);
+			}
+			printf("\n");
 		}
-		printf("\n");
+		printf("\n---------\n");
 	}
-	printf("\n---------\n");
 }
-
 
 
 

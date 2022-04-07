@@ -32,15 +32,18 @@ int main(int argc, char *argv[]) {
 	
 	initMatrix(N, Ma, Mb, Mr);
 	
-	SampleStart();
+	
 	//printf("\nA\n");
 	//printMatrix(N, Ma);
 	//printf("\nB\n");
 	//printMatrix(N, Mb);
-	matrixMM1f(N, Ma, Mb, Mr);
+	
+	SampleStart();
+	MM1f(N, Ma, Mb, Mr);
+	SampleEnd();
 	//printf("\nR\n");
 	//printMatrix(N, Mr);
-	SampleEnd();
+	
 	
 	
 	return 0;

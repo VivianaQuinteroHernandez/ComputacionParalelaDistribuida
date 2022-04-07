@@ -23,63 +23,67 @@
 #include <time.h>
 #include <pthread.h>
 #include <sys/time.h>
-
+#include <omp.h>
 
 int main(int argc, char* argv[]){
+	double **Ma,**Mb,**Mc;
 	if(argc !=3){
 		printf(".Exe N<dimMtriz> Nth<numHilos> \n\n");
 		return -1;
 	}
-	double **Ma,**Mb,**Mc;
-	N	 = atof(argv[1]);
-	Nthreads = atof(argv[2]);
-
+	
+	int N	 = atof(argv[1]); //dimesión de la matriz NxN
+	int Nthreads = atof(argv[2]);
+	//Se valida que el número de hilos ingresado sea menor o igual al número de cores detectados por el sistema operativo
+	if(Nthreads > omp_get_max_threads()){
+		printf("El número de hilos debe ser <= %d",omp_get_max_threads());
+		return -1;
+	}
 	// Se crea el pool de hilos
 	pthread_t *hilosExec;
 	//Se reserva memoria para los hilos
 	hilosExec = (pthread_t *)malloc(Nthreads*sizeof(pthread_t));
+	
+	//se crea un vector de arguento para ser pasados a los hilos
+	structHilos argThreads[Nthreads];
+	
 	//Creación y reserva de Mem para cada Matriz
 	Ma = ReservarMEM(N);
 	Mb = ReservarMEM(N);
 	Mc = ReservarMEM(N);
 	//Se inicializa las matrices
 	IniciarMatriz(Ma, Mb, Mc, N);
-	if (N<4){
-		printf("Matriz A: \n");
-		printMatriz(Ma, N);
-		printf("Matriz B: \n");
-		printMatriz(Mb, N);
-	}
+	
+	
+	printMatriz(Ma, N);
+	printMatriz(Mb, N);
+	
+	
 	SampleStart();
 	// Se reparte la tarea a cada hilo, al usar la función pthread_create
 	for(int i=0; i<Nthreads; ++i){
-		int *IDthread;
-		IDthread = (int *)malloc(sizeof(int));
-		*IDthread = i;	
-		struct dataThread *dataThread_=(struct dataThread *)malloc(sizeof(struct dataThread));//los datos que reserva el hilo
-		dataThread_->NThreads=Nthreads;
-		dataThread_->N=N;
-		dataThread_->Ma=Ma;
-		dataThread_->Mb=Mb;
-		dataThread_->Mr=Mc;
-		dataThread_->idThread=*idThread;
-		pthread_create(&hilosExec[i], NULL, multMM, (void *)IDthread);
+		argThreads[i].idThread = i;
+		argThreads[i].size = N;
+		argThreads[i].nThread = Nthreads;
+		argThreads[i].a = Ma;
+		argThreads[i].b = Mb;
+		argThreads[i].c = Mc;
+		//pthread_create(&hilosExec[i], NULL, multMM, (void *)argThreads[i].idThread);
+		pthread_create(&hilosExec[i], NULL, multMM, &argThreads[i]);
 	}
 	//espero a que todos los hilos terminen
 	for(int i=0; i<Nthreads; ++i){
 		pthread_join(hilosExec[i], NULL);
 	}
 	SampleEnd();
+	
+	
 	free(hilosExec);
 	
-	if(N<4){
-		printf("Matriz C: \n");
-		printMatriz(Mc, N);
-	}
 	
+	printMatriz(Mc, N);
 	
-	
-	return 0;
+	return EXIT_SUCCESS;
 }
 
 
